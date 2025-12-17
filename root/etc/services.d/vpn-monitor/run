@@ -1,0 +1,23 @@
+#!/usr/bin/with-contenv bash
+
+echo "Starting VPN monitor service..."
+
+while true; do
+    sleep 300  # Check every 5 minutes
+    
+    # Check if WireGuard interface is up
+    if ! ip link show wg0 &>/dev/null; then
+        echo "ERROR: WireGuard interface is down! Attempting restart..."
+        wg-quick down wg0 2>/dev/null
+        sleep 2
+        wg-quick up wg0 || {
+            echo "CRITICAL: Failed to restart WireGuard!"
+            continue
+        }
+    fi
+    
+    # Check if we can reach the internet through VPN
+    if ! timeout 10 curl -s --interface wg0 https://api.ipify.org &>/dev/null; then
+        echo "WARNING: Cannot reach internet through VPN"
+    fi
+done
