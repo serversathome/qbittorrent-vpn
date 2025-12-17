@@ -1,14 +1,13 @@
 FROM ghcr.io/linuxserver/qbittorrent:latest
 
-# Install WireGuard and networking tools
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+# Install WireGuard and networking tools (Alpine Linux)
+RUN apk add --no-cache \
     wireguard-tools \
     iptables \
+    ip6tables \
     iproute2 \
     curl \
-    procps && \
-    rm -rf /var/lib/apt/lists/*
+    bash
 
 # Copy startup script
 COPY root/ /
