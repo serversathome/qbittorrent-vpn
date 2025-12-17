@@ -1,0 +1,121 @@
+#!/usr/bin/with-contenv bash
+
+echo "======================================"
+echo "qBittorrent-VPN WireGuard Setup"
+echo "======================================"
+
+# Check if WireGuard config exists
+if [ ! -f /config/wireguard/wg0.conf ]; then
+    echo "ERROR: WireGuard config not found at /config/wireguard/wg0.conf"
+    echo "Please mount your WireGuard configuration file to /config/wireguard/wg0.conf"
+    exit 1
+fi
+
+# Create wireguard directory if it doesn't exist
+mkdir -p /etc/wireguard
+
+# Copy config to wireguard directory
+cp /config/wireguard/wg0.conf /etc/wireguard/wg0.conf
+chmod 600 /etc/wireguard/wg0.conf
+
+# Load WireGuard kernel module
+modprobe wireguard || {
+    echo "ERROR: Failed to load WireGuard kernel module"
+    echo "Please ensure your host has WireGuard support (kernel module or wireguard-dkms)"
+    exit 1
+}
+
+# Define local networks that should bypass VPN
+LOCAL_NETWORKS="10.0.0.0/8 192.168.0.0/16 172.16.0.0/12 100.64.0.0/10 100.84.0.0/12"
+
+# Enable IP forwarding
+echo "Enabling IP forwarding..."
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# Bring up WireGuard interface
+echo "Starting WireGuard interface..."
+wg-quick up wg0 || {
+    echo "ERROR: Failed to start WireGuard interface"
+    exit 1
+}
+
+# Wait for interface to be ready
+sleep 2
+
+# Get WireGuard interface IP
+WG_IP=$(ip addr show wg0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+echo "WireGuard IP: ${WG_IP}"
+
+# Flush existing iptables rules (except ACCEPT for established connections)
+echo "Configuring firewall rules..."
+iptables -F OUTPUT
+iptables -F INPUT
+
+# Default policies
+iptables -P OUTPUT DROP
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+
+# Allow loopback
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A OUTPUT -o lo -j ACCEPT
+
+# Allow established and related connections
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# Allow local network access (bypass VPN)
+for NET in $LOCAL_NETWORKS; do
+    echo "Adding local network bypass: $NET"
+    iptables -A INPUT -s $NET -j ACCEPT
+    iptables -A OUTPUT -d $NET -j ACCEPT
+done
+
+# Allow DNS through VPN (WireGuard typically handles this)
+iptables -A OUTPUT -o wg0 -p udp --dport 53 -j ACCEPT
+iptables -A OUTPUT -o wg0 -p tcp --dport 53 -j ACCEPT
+
+# Allow all traffic through WireGuard interface
+iptables -A OUTPUT -o wg0 -j ACCEPT
+iptables -A INPUT -i wg0 -j ACCEPT
+
+# Allow WireGuard handshake (outbound UDP to VPN server)
+WG_ENDPOINT=$(grep -oP '(?<=Endpoint = ).*(?=:\d+)' /etc/wireguard/wg0.conf | head -1)
+WG_PORT=$(grep -oP '(?<=Endpoint = .*:)\d+' /etc/wireguard/wg0.conf | head -1)
+
+if [ -n "$WG_ENDPOINT" ] && [ -n "$WG_PORT" ]; then
+    echo "Allowing WireGuard endpoint: $WG_ENDPOINT:$WG_PORT"
+    iptables -A OUTPUT -d $WG_ENDPOINT -p udp --dport $WG_PORT -j ACCEPT
+fi
+
+# Configure port forwarding if specified
+if [ -n "$VPN_PORT" ]; then
+    echo "Configuring port forwarding for port: $VPN_PORT"
+    iptables -A INPUT -i wg0 -p tcp --dport $VPN_PORT -j ACCEPT
+    iptables -A INPUT -i wg0 -p udp --dport $VPN_PORT -j ACCEPT
+    
+    # Store port for qBittorrent configuration
+    echo "$VPN_PORT" > /tmp/vpn_port
+fi
+
+# Log dropped packets (optional, for debugging)
+if [ "${DEBUG}" = "true" ]; then
+    iptables -A OUTPUT -j LOG --log-prefix "DROPPED OUTPUT: " --log-level 4
+    iptables -A INPUT -j LOG --log-prefix "DROPPED INPUT: " --log-level 4
+fi
+
+# Verify WireGuard is working
+echo "Verifying VPN connection..."
+sleep 3
+
+# Test connection through VPN
+if timeout 10 curl -s --interface wg0 https://api.ipify.org > /tmp/vpn_ip 2>/dev/null; then
+    VPN_IP=$(cat /tmp/vpn_ip)
+    echo "✓ VPN is working! External IP: $VPN_IP"
+else
+    echo "WARNING: Could not verify VPN connection"
+fi
+
+echo "======================================"
+echo "WireGuard VPN setup complete!"
+echo "======================================"
