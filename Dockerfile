@@ -13,7 +13,10 @@ RUN apk add --no-cache \
 COPY root/ /
 
 # Make scripts executable
-RUN chmod +x /etc/cont-init.d/* /etc/services.d/*/run
+RUN chmod +x /etc/cont-init.d/50-wireguard \
+             /etc/cont-init.d/60-qbittorrent-config \
+             /etc/cont-init.d/99-qbittorrent-wait \
+             /etc/services.d/*/run 2>/dev/null || true
 
 # Expose qBittorrent ports
 EXPOSE 8080 6881 6881/udp
