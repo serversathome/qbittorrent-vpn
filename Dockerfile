@@ -5,6 +5,8 @@ USER root
 
 # Install WireGuard + utilities
 RUN apk add --no-cache wireguard-tools iptables iproute2 bash curl
+RUN sed -i 's/resolvconf/#resolvconf/' /usr/bin/wg-quick
+
 
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
