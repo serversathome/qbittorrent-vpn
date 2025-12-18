@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 set -e
 
 WG_CONF="/config/wg0.conf"
@@ -6,18 +6,15 @@ WG_INTERFACE="wg0"
 CHECK_HOST="1.1.1.1"
 QBIT_CONF="/config/qBittorrent/qBittorrent.conf"
 
-echo "[INFO] Starting WireGuard VPN setup..."
+export WG_QUICK_NO_RESOLVCONF=1
 
-# Check WireGuard config exists
+echo "[INFO] Starting WireGuard VPN setup..."
 if [ ! -f "$WG_CONF" ]; then
-  echo "[ERROR] WireGuard config $WG_CONF not found!"
+  echo "[ERROR] WireGuard config not found!"
   exit 1
 fi
 
-# Disable wg-quick DNS updates to avoid Alpine resolvconf errors
-export WG_QUICK_NO_RESOLVCONF=1
-
-# Source wg-quick to avoid 'return' errors
+# Source wg-quick under bash
 . /usr/bin/wg-quick up "$WG_CONF" || {
   echo "[ERROR] Failed to bring up WireGuard interface."
   exit 1
