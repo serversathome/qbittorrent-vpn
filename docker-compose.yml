@@ -5,6 +5,8 @@ services:
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv6.conf.all.disable_ipv6=1
@@ -21,9 +23,15 @@ services:
       # Mount your WireGuard config here:
       # Make sure your wg0.conf file is in ./config/wireguard/wg0.conf
     ports:
-      - 8080:8080 
+      - 8080:8080  # qBittorrent WebUI
+      # - 6881:6881  # Only map this if you want direct access (not recommended with VPN)
+      # - 6881:6881/udp
     restart: unless-stopped
-
+    
+    # Optional: Use host networking for better performance (not recommended for security)
+    # network_mode: host
+    
+    # Health check
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080"]
       interval: 60s
