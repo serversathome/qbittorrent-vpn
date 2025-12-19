@@ -1,18 +1,15 @@
-# Base image (Alpine-based)
 FROM linuxserver/qbittorrent:latest
 
 USER root
 
 # Install WireGuard + utilities
-RUN apk add --no-cache wireguard-tools iptables iproute2 bash curl
-RUN sed -i 's/resolvconf/#resolvconf/' /usr/bin/wg-quick
-
+RUN apk add --no-cache wireguard-tools iptables ip6tables iproute2 bash curl openresolv
 
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Expose WebUI port only (torrent port optional via VPN forwarding)
+# Expose WebUI port
 EXPOSE 8080
 
 # Healthcheck - verify VPN connectivity
