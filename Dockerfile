@@ -11,6 +11,12 @@ RUN apk del openresolv 2>/dev/null || true && \
     echo 'exit 0' >> /sbin/resolvconf && \
     chmod +x /sbin/resolvconf
 
+# Create a dummy sysctl that does nothing (to prevent wg-quick from failing)
+RUN mv /sbin/sysctl /sbin/sysctl.real && \
+    echo '#!/bin/sh' > /sbin/sysctl && \
+    echo '/sbin/sysctl.real "$@" 2>/dev/null || exit 0' >> /sbin/sysctl && \
+    chmod +x /sbin/sysctl
+
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
