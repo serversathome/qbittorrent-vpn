@@ -1,9 +1,11 @@
 FROM linuxserver/qbittorrent:latest
-
 USER root
 
-# Install WireGuard + utilities (remove openresolv)
+# Install WireGuard + utilities
 RUN apk add --no-cache wireguard-tools iptables ip6tables iproute2 bash curl
+
+# Remove resolvconf to prevent wg-quick from trying to use it
+RUN apk del openresolv 2>/dev/null || true
 
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
