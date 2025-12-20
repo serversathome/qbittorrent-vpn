@@ -15,9 +15,16 @@ if [ ! -f "$WG_CONF" ]; then
   exit 1
 fi
 
-# Strip DNS entries from WireGuard config and save to temp file
+# Create modified WireGuard config with Table = off to avoid sysctl issues
 WG_TEMP="/tmp/wg0-nodns.conf"
-grep -v "^DNS" "$WG_CONF" > "$WG_TEMP"
+{
+  grep -v "^DNS" "$WG_CONF"
+  echo ""
+  echo "Table = off"
+} > "$WG_TEMP"
+
+# Set proper permissions
+chmod 600 "$WG_TEMP"
 
 # Extract DNS servers if present in original config
 DNS_SERVERS=$(grep "^DNS" "$WG_CONF" | head -1 | cut -d= -f2 | tr -d ' ' || echo "1.1.1.1,8.8.8.8")
@@ -30,7 +37,7 @@ echo "$DNS_SERVERS" | tr ',' '\n' | while read -r dns; do
   [ -n "$dns" ] && echo "nameserver $dns" >> /etc/resolv.conf
 done
 
-# Bring up WireGuard interface without DNS handling
+# Bring up WireGuard interface
 echo "[INFO] Bringing up WireGuard interface..."
 wg-quick up "$WG_TEMP" || {
   echo "[ERROR] Failed to bring up WireGuard interface."
@@ -40,18 +47,33 @@ wg-quick up "$WG_TEMP" || {
 }
 
 # Wait for interface to be ready
-sleep 3
+sleep 2
 
 # Verify interface is up
 if ! ip link show "$WG_INTERFACE" >/dev/null 2>&1; then
   echo "[ERROR] WireGuard interface $WG_INTERFACE not found after startup"
-  wg-quick down "$WG_TEMP" 2>/dev/null || true
+  wg-quick down "$WG_INTERFACE" 2>/dev/null || true
   rm -f "$WG_TEMP"
   exit 1
 fi
 
 echo "[INFO] WireGuard interface is up:"
 wg show "$WG_INTERFACE"
+
+# Set up routing manually since we disabled automatic routing with Table = off
+echo "[INFO] Setting up VPN routing..."
+
+# Get the default gateway for the physical interface (to reach VPN endpoint)
+DEFAULT_GW=$(ip route | grep default | awk '{print $3}' | head -1)
+VPN_ENDPOINT=$(grep "^Endpoint" "$WG_CONF" | head -1 | cut -d= -f2 | tr -d ' ' | cut -d: -f1)
+
+if [ -n "$VPN_ENDPOINT" ] && [ -n "$DEFAULT_GW" ]; then
+  # Add route for VPN endpoint through default gateway
+  ip route add "$VPN_ENDPOINT/32" via "$DEFAULT_GW" 2>/dev/null || true
+fi
+
+# Route all other traffic through VPN
+ip route add default dev "$WG_INTERFACE" metric 100
 
 echo "[INFO] Setting up killswitch firewall..."
 
@@ -87,11 +109,16 @@ iptables -A INPUT -p tcp --dport "$WEBUI_PORT" -s 10.0.0.0/8 -j ACCEPT
 iptables -A INPUT -p tcp --dport "$WEBUI_PORT" -s 172.16.0.0/12 -j ACCEPT
 iptables -A INPUT -p tcp --dport "$WEBUI_PORT" -s 192.168.0.0/16 -j ACCEPT
 
+# Allow output to VPN endpoint (so WireGuard can connect)
+if [ -n "$VPN_ENDPOINT" ]; then
+  iptables -A OUTPUT -d "$VPN_ENDPOINT" -j ACCEPT
+fi
+
 # Allow all traffic through VPN interface
 iptables -A INPUT -i "$WG_INTERFACE" -j ACCEPT
 iptables -A OUTPUT -o "$WG_INTERFACE" -j ACCEPT
 
-# Allow DNS queries (needed during startup and for VPN)
+# Allow DNS queries
 iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
 iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 
@@ -101,8 +128,12 @@ echo "[INFO] Firewall rules applied (killswitch active)."
 echo "[INFO] Testing VPN connectivity..."
 if ! ping -c 3 -W 5 "$CHECK_HOST" >/dev/null 2>&1; then
   echo "[ERROR] VPN appears down — cannot reach $CHECK_HOST."
+  echo "[DEBUG] Interface status:"
   ip addr show "$WG_INTERFACE"
+  echo "[DEBUG] Routing table:"
   ip route show
+  echo "[DEBUG] WireGuard status:"
+  wg show "$WG_INTERFACE"
   wg-quick down "$WG_INTERFACE" 2>/dev/null || true
   rm -f "$WG_TEMP"
   exit 1
@@ -110,7 +141,7 @@ fi
 
 echo "[INFO] VPN connectivity verified ✓"
 
-# Clean up temp file after successful VPN setup
+# Clean up temp file
 rm -f "$WG_TEMP"
 
 # Configure qBittorrent port forwarding if set
@@ -119,19 +150,15 @@ if [ -n "$VPN_PORT_FORWARD" ]; then
   mkdir -p "$(dirname "$QBIT_CONF")"
 
   if [ -f "$QBIT_CONF" ]; then
-    # Remove existing port config
     sed -i '/Connection\\PortRangeMin=/d' "$QBIT_CONF"
-    # Add under [Preferences] section
     sed -i "/^\[Preferences\]/a Connection\\\\PortRangeMin=$VPN_PORT_FORWARD" "$QBIT_CONF"
   else
-    # Create new config file
     cat > "$QBIT_CONF" << EOF
 [Preferences]
 Connection\\PortRangeMin=$VPN_PORT_FORWARD
 EOF
   fi
 
-  # Allow the forwarded port through firewall
   iptables -I INPUT -i "$WG_INTERFACE" -p tcp --dport "$VPN_PORT_FORWARD" -j ACCEPT
   iptables -I INPUT -i "$WG_INTERFACE" -p udp --dport "$VPN_PORT_FORWARD" -j ACCEPT
   
@@ -140,7 +167,7 @@ fi
 
 echo "[INFO] Starting VPN watchdog in background..."
 
-# Cleanup function for graceful shutdown
+# Cleanup function
 cleanup() {
   echo "[INFO] Shutting down..."
   pkill -15 qbittorrent-nox 2>/dev/null || true
@@ -152,7 +179,7 @@ cleanup() {
 
 trap cleanup SIGTERM SIGINT
 
-# VPN watchdog: monitors connectivity
+# VPN watchdog
 (
   while sleep 60; do
     if ! ping -c 1 -W 3 "$CHECK_HOST" >/dev/null 2>&1; then
@@ -164,10 +191,7 @@ trap cleanup SIGTERM SIGINT
   done
 ) &
 
-# Start qBittorrent using the base image's s6 infrastructure
 echo "[INFO] Starting qBittorrent WebUI on port $WEBUI_PORT..."
-
-# Make sure config directory is owned by abc user
 chown -R abc:abc /config 2>/dev/null || true
 
 exec s6-setuidgid abc qbittorrent-nox --webui-port="$WEBUI_PORT"
