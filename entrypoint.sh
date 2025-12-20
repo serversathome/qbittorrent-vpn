@@ -1,3 +1,6 @@
+Here's the complete entrypoint.sh script:
+
+```bash
 #!/usr/bin/env bash
 set -e
 
@@ -29,7 +32,7 @@ done
 
 echo "[INFO] Setting up killswitch firewall BEFORE VPN..."
 
-# Set default policies
+# Set default policies to DROP before starting VPN
 iptables -P INPUT DROP
 iptables -P FORWARD DROP  
 iptables -P OUTPUT DROP
@@ -82,6 +85,18 @@ fi
 
 echo "[INFO] WireGuard interface is up:"
 wg show "$WG_INTERFACE"
+
+# FIX: Ensure local network traffic doesn't go through VPN
+# Add specific routes for local networks to go through eth0
+echo "[INFO] Adding local network routing exceptions..."
+ip route add 10.0.0.0/8 via 172.16.2.1 dev eth0 2>/dev/null || true
+ip route add 172.16.0.0/12 via 172.16.2.1 dev eth0 2>/dev/null || true
+ip route add 192.168.0.0/16 via 172.16.2.1 dev eth0 2>/dev/null || true
+
+# Also add these to the policy routing table to override VPN routes
+ip route add 10.0.0.0/8 via 172.16.2.1 dev eth0 table 51820 2>/dev/null || true
+ip route add 172.16.0.0/12 via 172.16.2.1 dev eth0 table 51820 2>/dev/null || true
+ip route add 192.168.0.0/16 via 172.16.2.1 dev eth0 table 51820 2>/dev/null || true
 
 # Now allow all traffic through VPN interface
 iptables -A INPUT -i "$WG_INTERFACE" -j ACCEPT
@@ -152,3 +167,4 @@ echo "[INFO] Starting qBittorrent WebUI on port $WEBUI_PORT..."
 chown -R abc:abc /config 2>/dev/null || true
 
 exec s6-setuidgid abc qbittorrent-nox --webui-port="$WEBUI_PORT"
+```
