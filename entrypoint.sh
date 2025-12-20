@@ -46,10 +46,14 @@ iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A INPUT -s 10.0.0.0/8 -j ACCEPT
 iptables -A INPUT -s 172.16.0.0/12 -j ACCEPT
 iptables -A INPUT -s 192.168.0.0/16 -j ACCEPT
+iptables -A INPUT -s 100.64.0.0/10 -j ACCEPT  # CGNAT range (includes Tailscale)
+iptables -A INPUT -s 100.84.0.0/16 -j ACCEPT  # Netbird
 
 iptables -A OUTPUT -d 10.0.0.0/8 -j ACCEPT
 iptables -A OUTPUT -d 172.16.0.0/12 -j ACCEPT
 iptables -A OUTPUT -d 192.168.0.0/16 -j ACCEPT
+iptables -A OUTPUT -d 100.64.0.0/10 -j ACCEPT  # CGNAT range (includes Tailscale)
+iptables -A OUTPUT -d 100.84.0.0/16 -j ACCEPT  # Netbird
 
 # Allow DNS queries
 iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
@@ -89,11 +93,15 @@ echo "[INFO] Adding local network routing exceptions..."
 ip route add 10.0.0.0/8 via 172.16.2.1 dev eth0 2>/dev/null || true
 ip route add 172.16.0.0/12 via 172.16.2.1 dev eth0 2>/dev/null || true
 ip route add 192.168.0.0/16 via 172.16.2.1 dev eth0 2>/dev/null || true
+ip route add 100.64.0.0/10 via 172.16.2.1 dev eth0 2>/dev/null || true  # CGNAT range (includes Tailscale)
+ip route add 100.84.0.0/16 via 172.16.2.1 dev eth0 2>/dev/null || true  # Netbird
 
 # Also add these to the policy routing table to override VPN routes
 ip route add 10.0.0.0/8 via 172.16.2.1 dev eth0 table 51820 2>/dev/null || true
 ip route add 172.16.0.0/12 via 172.16.2.1 dev eth0 table 51820 2>/dev/null || true
 ip route add 192.168.0.0/16 via 172.16.2.1 dev eth0 table 51820 2>/dev/null || true
+ip route add 100.64.0.0/10 via 172.16.2.1 dev eth0 table 51820 2>/dev/null || true  # CGNAT range (includes Tailscale)
+ip route add 100.84.0.0/16 via 172.16.2.1 dev eth0 table 51820 2>/dev/null || true  # Netbird
 
 # Now allow all traffic through VPN interface
 iptables -A INPUT -i "$WG_INTERFACE" -j ACCEPT
