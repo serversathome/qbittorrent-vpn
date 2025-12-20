@@ -15,9 +15,21 @@ if [ ! -f "$WG_CONF" ]; then
   exit 1
 fi
 
-# Bring up WireGuard interface using wg-quick
+# Extract DNS from config before bringing up interface
+DNS_SERVERS=$(grep "^DNS" "$WG_CONF" | head -1 | cut -d= -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo "1.1.1.1,8.8.8.8")
+DNS_SERVERS=$(echo "$DNS_SERVERS" | sed 's/[[:space:]]*,[[:space:]]*/,/g')
+
+echo "[INFO] Configuring DNS: $DNS_SERVERS"
+
+# Set DNS manually before bringing up VPN
+echo "# WireGuard DNS" > /etc/resolv.conf
+echo "$DNS_SERVERS" | tr ',' '\n' | while read -r dns; do
+  [ -n "$dns" ] && echo "nameserver $dns" >> /etc/resolv.conf
+done
+
+# Bring up WireGuard interface using wg-quick but skip DNS management
 echo "[INFO] Bringing up WireGuard interface..."
-wg-quick up "$WG_CONF" || {
+SKIP_DNS_SETUP=1 wg-quick up "$WG_CONF" || {
   echo "[ERROR] Failed to bring up WireGuard interface."
   exit 1
 }
