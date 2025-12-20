@@ -20,6 +20,8 @@ A Docker container that runs qBittorrent with a built-in WireGuard VPN connectio
 - Docker and Docker Compose installed
 - A WireGuard VPN configuration file from your VPN provider (e.g., AirVPN, Mullvad, ProtonVPN, etc.)
 
+> **💡 Need a VPN?** I personally use and recommend [AirVPN](https://airvpn.org/?referred_by=669318) - they offer native WireGuard support, port forwarding, and excellent privacy. Using this referral link supports the project!
+
 ### Step 1: Get Your WireGuard Config
 
 Download a WireGuard configuration file from your VPN provider. It should look something like this:
@@ -119,8 +121,6 @@ environment:
 | `/mnt/tank/configs/qbittorrent` | Contains WireGuard config (`wg0.conf`) and qBittorrent settings |
 | `/media` | Should container your downloads folder - map this to where you want files saved |
 
-
-
 ## Network Configuration
 
 The container automatically bypasses the VPN for:
@@ -185,6 +185,7 @@ If you get a black screen that says `unauthorized` its ok - everything is workin
 ### Permission errors on downloads
 
 Make sure `PUID` and `PGID` are correct and your `media` dataset has correct permissions **applied recursively!**
+
 ## Advanced Usage
 
 ### Using with TrueNAS or other NAS
@@ -228,14 +229,22 @@ docker-compose up -d
 
 This container works with any VPN provider that offers WireGuard configs:
 
-- ✅ AirVPN (with port forwarding)
+- ✅ **[AirVPN](https://airvpn.org/?referred_by=669318)** (with port forwarding) - *Recommended*
 - ✅ Mullvad
 - ✅ ProtonVPN (with port forwarding)
 - ✅ IVPN
 - ✅ Windscribe
 - ✅ Any WireGuard-compatible provider
 
-## Support
+## Support This Project
+
+If you find this project helpful, consider supporting its development:
+
+<a href="https://buymeacoffee.com/serversathome" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
+Your support helps me maintain this project and create more useful Docker containers and homelab tools!
+
+## Support & Help
 
 Having issues? Check the logs first:
 ```bash
