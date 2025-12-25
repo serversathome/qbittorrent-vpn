@@ -10,13 +10,15 @@ A Docker container that runs qBittorrent with a built-in WireGuard VPN connectio
 ## Features
 
 - ✅ **Built-in WireGuard VPN** - No separate VPN container needed
-- ✅ **Automatic Killswitch** - Stops all traffic if VPN disconnects
+- ✅ **Automatic Killswitch** - Container stops if VPN disconnects (prevents leaks)
+- ✅ **Dynamic Gateway Detection** - Works on any network (no hardcoded IPs)
 - ✅ **Port Forwarding Support** - Configure forwarded ports from your VPN provider
 - ✅ **Local Network Access** - WebUI accessible from your local network
 - ✅ **VPN Bypass for LAN** - Local network traffic doesn't go through VPN
 - ✅ **Tailscale & Netbird Support** - Access from mesh VPN networks
 - ✅ **Health Monitoring** - Automatic VPN connectivity checks
 - ✅ **Easy Configuration** - Just drop in your WireGuard config file
+- ✅ **Proper PUID/PGID Support** - Built on linuxserver.io s6-overlay
 
 ## Quick Start
 
@@ -85,7 +87,31 @@ services:
 docker-compose up -d
 ```
 
-### Step 6: Access the WebUI
+### Step 6: Verify VPN Setup
+
+Check the logs to ensure WireGuard connected successfully:
+```bash
+docker logs qbittorrent-wireguard
+```
+
+You should see:
+```
+========================================
+WireGuard VPN Setup
+========================================
+[INFO] Found WireGuard config at /config/wg0.conf
+[INFO] Configuring DNS: 1.1.1.1,8.8.8.8
+[INFO] Detected gateway: 192.168.1.1 via interface: eth0
+[INFO] Setting up killswitch firewall BEFORE VPN...
+[INFO] Killswitch active - bringing up VPN interface...
+[INFO] WireGuard interface is up:
+[INFO] VPN connectivity verified ✓
+========================================
+WireGuard VPN Setup Complete ✓
+========================================
+```
+
+### Step 7: Access the WebUI
 
 Open your browser and go to `http://localhost:8080` (or `http://your-server-ip:8080`)
 
@@ -139,7 +165,7 @@ This means:
 - ✅ You can access the WebUI from your local network
 - ✅ Tailscale/Netbird remote access works
 - ✅ All torrent traffic goes through the VPN
-- ✅ If VPN drops, torrenting stops immediately
+- ✅ If VPN drops, the entire container stops (killswitch protection)
 
 ## Verifying the VPN Works
 
@@ -154,9 +180,14 @@ This means:
 ### Test the Killswitch
 
 1. Stop your VPN provider's server (or disconnect internet briefly)
-2. Check qBittorrent - all downloads should stop
+2. The container will automatically stop to prevent leaks
 3. Check logs: `docker logs qbittorrent-wireguard`
-4. You should see: `[WARN] Lost VPN connectivity — shutting down.`
+4. You should see:
+   ```
+   [CRITICAL] Lost VPN connectivity to 1.1.1.1 — triggering killswitch!
+   [CRITICAL] Stopping qBittorrent to prevent leaks...
+   [CRITICAL] Container will now exit. Please check your VPN configuration.
+   ```
 
 ## Troubleshooting
 
@@ -168,9 +199,16 @@ docker logs qbittorrent-wireguard
 ```
 
 **Common issues:**
-- WireGuard config not found: Make sure `wg0.conf` exists in the config directory
-- Permission denied: Check that your `PUID` and `PGID` are correct
-- VPN connection failed: Verify your WireGuard config is valid
+- **WireGuard config not found**: Make sure `wg0.conf` exists in the config directory
+- **Permission denied**: Check that your `PUID` and `PGID` are correct
+- **VPN connection failed**: Verify your WireGuard config is valid
+- **Container stops immediately**: VPN setup failed - check logs for specific errors
+- **Gateway detection failed**: Ensure container has proper network access
+
+**Expected startup behavior:**
+- Container will NOT start qBittorrent until VPN is verified
+- If VPN setup fails, container exits (this is intentional - killswitch protection)
+- Check logs for `[INFO] Detected gateway:` to verify network detection worked
 
 ### Can't access WebUI
 
