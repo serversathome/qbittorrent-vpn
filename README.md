@@ -65,16 +65,18 @@ services:
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv6.conf.all.disable_ipv6=0
     ports:
-      - 8080:8080  # WebUI port
+      - 8080:8080
+      # Optional forwarded ports if supported by your VPN:
+      # - 12345:12345
     environment:
       - PUID=568
       - PGID=568
       - UMASK_SET=022
       - WEBUI_PORT=8080
-      - VPN_PORT_FORWARD=  # Optional: Set if your VPN provider gives you a forwarded port
+      # - VPN_PORT_FORWARD=51820  # Optional: your VPN-assigned port
     volumes:
-      - /mnt/tank/configs/qbittorrent:/config
-      - /media:/media
+      - /mnt/tank/configs/qbittorrent-wireguard:/config
+      - /mnt/tank/media:/media
     restart: unless-stopped
 ```
 
